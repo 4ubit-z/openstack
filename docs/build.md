@@ -136,12 +136,6 @@ apt install -y chrony
 systemctl enable --now chrony
 ```
 
-### 4.4 OpenStack Repository 설정
-
-```bash
-add-apt-repository cloud-archive:caracal
-apt update && apt -y upgrade
-```
 
 ---
 
@@ -175,7 +169,7 @@ systemctl restart mariadb
 
 ```bash
 apt install -y rabbitmq-server
-rabbitmqctl add_user openstack RABBIT_PASS
+rabbitmqctl add_user openstack 1234
 rabbitmqctl set_permissions openstack ".*" ".*" ".*"
 ```
 
@@ -198,7 +192,7 @@ systemctl restart memcached
 ```bash
 mysql -u root <<EOF
 CREATE DATABASE keystone;
-GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY 'KEYSTONE_DBPASS';
+GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY '1234';
 FLUSH PRIVILEGES;
 EOF
 ```
@@ -216,7 +210,7 @@ apt install -y keystone apache2
 **/etc/keystone/keystone.conf 편집:**
 ```ini
 [database]
-connection = mysql+pymysql://keystone:KEYSTONE_DBPASS@controller/keystone
+connection = mysql+pymysql://keystone:1234@controller/keystone
 
 [token]
 provider = fernet
@@ -229,7 +223,7 @@ keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
 keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
 
 keystone-manage bootstrap \
-  --bootstrap-password ADMIN_PASS \
+  --bootstrap-password 1234 \
   --bootstrap-admin-url http://controller:5000/v3/ \
   --bootstrap-internal-url http://controller:5000/v3/ \
   --bootstrap-public-url http://controller:5000/v3/ \
@@ -249,13 +243,15 @@ export OS_PROJECT_DOMAIN_NAME=Default
 export OS_USER_DOMAIN_NAME=Default
 export OS_PROJECT_NAME=admin
 export OS_USERNAME=admin
-export OS_PASSWORD=ADMIN_PASS
+export OS_PASSWORD=1234
 export OS_AUTH_URL=http://controller:5000/v3
 export OS_IDENTITY_API_VERSION=3
 export OS_IMAGE_API_VERSION=2
 EOF
 
 source ~/admin-openrc
+>> 확인
+openstack token issue
 ```
 
 ---
@@ -267,7 +263,7 @@ source ~/admin-openrc
 ```bash
 mysql -u root <<EOF
 CREATE DATABASE glance;
-GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'%' IDENTIFIED BY 'GLANCE_DBPASS';
+GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'%' IDENTIFIED BY '1234';
 FLUSH PRIVILEGES;
 EOF
 ```
@@ -277,13 +273,14 @@ EOF
 ```bash
 source ~/admin-openrc
 
-openstack user create --domain default --password GLANCE_PASS glance
-openstack role add --project service --user glance admin
+openstack user create --domain default --password 1234 glance
+openstack role add --project admin --user glance admin
 openstack service create --name glance --description "OpenStack Image" image
 
 openstack endpoint create --region RegionOne image public http://controller:9292
 openstack endpoint create --region RegionOne image internal http://controller:9292
 openstack endpoint create --region RegionOne image admin http://controller:9292
+
 ```
 
 ### 7.3 Glance 설치 및 설정
@@ -295,7 +292,7 @@ apt install -y glance
 **/etc/glance/glance-api.conf 편집:**
 ```ini
 [database]
-connection = mysql+pymysql://glance:GLANCE_DBPASS@controller/glance
+connection = mysql+pymysql://glance:1234@controller/glance
 
 [keystone_authtoken]
 www_authenticate_uri = http://controller:5000
@@ -304,9 +301,9 @@ memcached_servers = controller:11211
 auth_type = password
 project_domain_name = Default
 user_domain_name = Default
-project_name = service
+project_name = admin        
 username = glance
-password = GLANCE_PASS
+password = 1234
 
 [paste_deploy]
 flavor = keystone
@@ -315,6 +312,7 @@ flavor = keystone
 stores = file,http
 default_store = file
 filesystem_store_datadir = /var/lib/glance/images/
+
 ```
 
 **데이터베이스 동기화:**
@@ -345,7 +343,7 @@ openstack image list
 ```bash
 mysql -u root <<EOF
 CREATE DATABASE placement;
-GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'%' IDENTIFIED BY 'PLACEMENT_DBPASS';
+GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'%' IDENTIFIED BY '1234';
 FLUSH PRIVILEGES;
 EOF
 ```
@@ -355,8 +353,8 @@ EOF
 ```bash
 source ~/admin-openrc
 
-openstack user create --domain default --password PLACEMENT_PASS placement
-openstack role add --project service --user placement admin
+openstack user create --domain default --password 1234 placement
+openstack role add --project admin --user placement admin
 openstack service create --name placement --description "Placement API" placement
 
 openstack endpoint create --region RegionOne placement public http://controller:8778
@@ -373,7 +371,7 @@ apt install -y placement-api
 **/etc/placement/placement.conf 편집:**
 ```ini
 [placement_database]
-connection = mysql+pymysql://placement:PLACEMENT_DBPASS@controller/placement
+connection = mysql+pymysql://placement:1234@controller/placement
 
 [api]
 auth_strategy = keystone
@@ -384,7 +382,7 @@ memcached_servers = controller:11211
 auth_type = password
 project_domain_name = Default
 user_domain_name = Default
-project_name = service
+project_name = admin
 username = placement
 password = PLACEMENT_PASS
 ```
@@ -408,9 +406,9 @@ mysql -u root <<EOF
 CREATE DATABASE nova_api;
 CREATE DATABASE nova;
 CREATE DATABASE nova_cell0;
-GRANT ALL PRIVILEGES ON nova_api.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS';
-GRANT ALL PRIVILEGES ON nova.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS';
-GRANT ALL PRIVILEGES ON nova_cell0.* TO 'nova'@'%' IDENTIFIED BY 'NOVA_DBPASS';
+GRANT ALL PRIVILEGES ON nova_api.* TO 'nova'@'%' IDENTIFIED BY '1234';
+GRANT ALL PRIVILEGES ON nova.* TO 'nova'@'%' IDENTIFIED BY '1234';
+GRANT ALL PRIVILEGES ON nova_cell0.* TO 'nova'@'%' IDENTIFIED BY '1234';
 FLUSH PRIVILEGES;
 EOF
 ```
@@ -420,8 +418,8 @@ EOF
 ```bash
 source ~/admin-openrc
 
-openstack user create --domain default --password NOVA_PASS nova
-openstack role add --project service --user nova admin
+openstack user create --domain default --password 1234 nova
+openstack role add --project admin --user nova admin
 openstack service create --name nova --description "OpenStack Compute" compute
 
 openstack endpoint create --region RegionOne compute public http://controller:8774/v2.1
@@ -441,18 +439,19 @@ apt install -y nova-api nova-conductor nova-scheduler nova-novncproxy
 ```ini
 [DEFAULT]
 log_dir = /var/log/nova
+lock_path = /var/lock/nova
 state_path = /var/lib/nova
-transport_url = rabbit://openstack:RABBIT_PASS@controller:5672/
-my_ip = 192.168.0.10
+transport_url = rabbit://openstack:1234@controller:5672/
+my_ip = 192.168.77.129
 
 [api]
 auth_strategy = keystone
 
 [api_database]
-connection = mysql+pymysql://nova:NOVA_DBPASS@controller/nova_api
+connection = mysql+pymysql://nova:1234@controller/nova_api
 
 [database]
-connection = mysql+pymysql://nova:NOVA_DBPASS@controller/nova
+connection = mysql+pymysql://nova:1234@controller/nova
 
 [keystone_authtoken]
 www_authenticate_uri = http://controller:5000/
@@ -461,9 +460,9 @@ memcached_servers = controller:11211
 auth_type = password
 project_domain_name = Default
 user_domain_name = Default
-project_name = service
+project_name = admin
 username = nova
-password = NOVA_PASS
+password = 1234
 
 [vnc]
 enabled = true
@@ -476,12 +475,12 @@ api_servers = http://controller:9292
 [placement]
 region_name = RegionOne
 project_domain_name = Default
-project_name = service
+project_name = admin
 auth_type = password
 user_domain_name = Default
 auth_url = http://controller:5000/v3
 username = placement
-password = PLACEMENT_PASS
+password = 1234
 
 [neutron]
 auth_url = http://controller:5000
@@ -489,17 +488,32 @@ auth_type = password
 project_domain_name = Default
 user_domain_name = Default
 region_name = RegionOne
-project_name = service
+project_name = admin
 username = neutron
-password = NEUTRON_PASS
+password = 1234
 service_metadata_proxy = true
-metadata_proxy_shared_secret = METADATA_SECRET
+metadata_proxy_shared_secret = 1234
 ```
 
 #### 9.1.5 데이터베이스 동기화
 
 ```bash
 nova-manage api_db sync
+>> 
+3 RLock(s) were not greened, to fix this error make sure you run eventlet.monkey_patch() before importing any other modules.
+root@controller:~# mysql -u root -e "USE nova_api; SHOW TABLES;" | head
+Tables_in_nova_api
+aggregate_hosts
+aggregate_metadata
+aggregates
+alembic_version
+allocations
+build_requests
+cell_mappings
+consumers
+flavor_extra_specs
+
+>>
 nova-manage cell_v2 map_cell0
 nova-manage cell_v2 create_cell --name=cell1 --verbose
 nova-manage db sync
@@ -522,9 +536,10 @@ apt install -y nova-compute
 ```ini
 [DEFAULT]
 log_dir = /var/log/nova
+lock_path = /var/lock/nova
 state_path = /var/lib/nova
-transport_url = rabbit://openstack:RABBIT_PASS@controller:5672/
-my_ip = 192.168.0.11
+transport_url = rabbit://openstack:1234@controller:5672/
+my_ip = 192.168.77.130
 
 [api]
 auth_strategy = keystone
@@ -536,9 +551,9 @@ memcached_servers = controller:11211
 auth_type = password
 project_domain_name = Default
 user_domain_name = Default
-project_name = service
+project_name = admin
 username = nova
-password = NOVA_PASS
+password = 1234
 
 [vnc]
 enabled = true
@@ -552,12 +567,12 @@ api_servers = http://controller:9292
 [placement]
 region_name = RegionOne
 project_domain_name = Default
-project_name = service
+project_name = admin
 auth_type = password
 user_domain_name = Default
 auth_url = http://controller:5000/v3
 username = placement
-password = PLACEMENT_PASS
+password = 1234
 
 [neutron]
 auth_url = http://controller:5000
@@ -565,12 +580,13 @@ auth_type = password
 project_domain_name = Default
 user_domain_name = Default
 region_name = RegionOne
-project_name = service
+project_name = admin
 username = neutron
-password = NEUTRON_PASS
+password = 1234
 
 [libvirt]
 virt_type = kvm
+
 ```
 
 **서비스 재시작:**
@@ -584,59 +600,113 @@ systemctl restart nova-compute
 ```bash
 source ~/admin-openrc
 openstack compute service list
+>>
+(트러블슈팅) PermissionError: [Errno 13] Permission denied: '/var/log/nova/nova-manage.log'
+즉, nova 사용자로 nova-manage를 실행했는데, /var/log/nova/에 로그 파일을 쓸 권한이 없음
+[컨트롤러]
+chown -R nova:nova /var/log/nova
+chmod 750 /var/log/nova
+su -s /bin/sh -c "nova-manage cell_v2 discover_hosts --verbose" nova
+(원인)
+nova.conf에서:
+log_dir = /var/log/nova
+이렇게 지정돼 있는데, /var/log/nova가 nova:nova 소유가 아니면 nova-manage가 로그를 못 써서
+
+[확인]
+root@controller:~# openstack compute service list
++-----------+-----------+-----------+----------+---------+-------+-------------+
+| ID        | Binary    | Host      | Zone     | Status  | State | Updated At  |
++-----------+-----------+-----------+----------+---------+-------+-------------+
+| 41161ec8- | nova-     | controlle | internal | enabled | up    | 2025-12-    |
+| 5850-     | conductor | r         |          |         |       | 17T11:23:52 |
+| 49f3-     |           |           |          |         |       | .000000     |
+| 8cc9-     |           |           |          |         |       |             |
+| 76c3eda6b |           |           |          |         |       |             |
+| 6ae       |           |           |          |         |       |             |
+| 02222068- | nova-     | controlle | internal | enabled | up    | 2025-12-    |
+| 0d18-     | scheduler | r         |          |         |       | 17T11:23:53 |
+| 42da-     |           |           |          |         |       | .000000     |
+| 8a3d-     |           |           |          |         |       |             |
+| 0dd9d1444 |           |           |          |         |       |             |
+| a02       |           |           |          |         |       |             |
+| 7217a25a- | nova-     | compute   | nova     | enabled | up    | 2025-12-    |
+| 4dd9-     | compute   |           |          |         |       | 17T11:23:54 |
+| 48f7-     |           |           |          |         |       | .000000     |
+| 8a72-     |           |           |          |         |       |             |
+| bd4f5fed0 |           |           |          |         |       |             |
+| e5b       |           |           |          |         |       |             |
++-----------+-----------+-----------+----------+---------+-------+-------------+
+root@controller:~# 
+
+>>
 openstack catalog list
 openstack image list
 ```
 
 ---
+# 10. 네트워크 서비스 (Neutron – Open vSwitch + VXLAN)
 
-## 10. 네트워크 서비스 (Neutron)
+## 구성 목표
 
-### 10.1 Controller Node 설정
+- Controller 1 + Compute 1
+- VM은 사설 IP(VXLAN) 사용
+- VM ↔ VM ping 통신
+- Host-Only 네트워크를 VXLAN 터널망으로 사용
 
-#### 10.1.1 DB 생성
+---
+
+## 10.1 Controller Node 설정
+
+### 10.1.1 DB 생성
 
 ```bash
 mysql -u root <<EOF
 CREATE DATABASE neutron;
-GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY 'NEUTRON_DBPASS';
+GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY '1234';
 FLUSH PRIVILEGES;
 EOF
 ```
 
-#### 10.1.2 Neutron 사용자 및 서비스 생성
+### 10.1.2 Neutron 사용자 및 서비스 생성
 
 ```bash
 source ~/admin-openrc
 
-openstack user create --domain default --password NEUTRON_PASS neutron
-openstack role add --project service --user neutron admin
-openstack service create --name neutron --description "OpenStack Networking" network
+openstack user create --domain default --password 1234 neutron
+openstack role add --project admin --user neutron admin
+
+openstack service create \
+  --name neutron \
+  --description "OpenStack Networking" network
 
 openstack endpoint create --region RegionOne network public http://controller:9696
 openstack endpoint create --region RegionOne network internal http://controller:9696
 openstack endpoint create --region RegionOne network admin http://controller:9696
 ```
 
-#### 10.1.3 Neutron 설치
+### 10.1.3 Neutron 설치
+
+**Controller 노드:**
 
 ```bash
-apt install -y neutron-server neutron-plugin-ml2 \
-  neutron-openvswitch-agent neutron-l3-agent neutron-dhcp-agent \
-  neutron-metadata-agent
+apt install -y neutron-server neutron-openvswitch-agent \
+  neutron-l3-agent neutron-dhcp-agent neutron-metadata-agent
 ```
 
-#### 10.1.4 Neutron 설정
+> ❌ `neutron-linuxbridge-agent` 사용 안 함
 
-**/etc/neutron/neutron.conf 편집:**
+### 10.1.4 Neutron 설정 (Controller)
+
+#### `/etc/neutron/neutron.conf`
+
 ```ini
 [database]
-connection = mysql+pymysql://neutron:NEUTRON_DBPASS@controller/neutron
+connection = mysql+pymysql://neutron:1234@controller/neutron
 
 [DEFAULT]
 core_plugin = ml2
 service_plugins = router
-transport_url = rabbit://openstack:RABBIT_PASS@controller
+transport_url = rabbit://openstack:1234@controller:5672/
 auth_strategy = keystone
 notify_nova_on_port_status_changes = true
 notify_nova_on_port_data_changes = true
@@ -648,9 +718,9 @@ memcached_servers = controller:11211
 auth_type = password
 project_domain_name = Default
 user_domain_name = Default
-project_name = service
+project_name = admin
 username = neutron
-password = NEUTRON_PASS
+password = 1234
 
 [nova]
 auth_url = http://controller:5000
@@ -658,21 +728,19 @@ auth_type = password
 project_domain_name = Default
 user_domain_name = Default
 region_name = RegionOne
-project_name = service
+project_name = admin
 username = nova
-password = NOVA_PASS
+password = 1234
 ```
 
-**/etc/neutron/plugins/ml2/ml2_conf.ini 편집:**
+#### `/etc/neutron/plugins/ml2/ml2_conf.ini` (Controller / Compute 공통)
+
 ```ini
 [ml2]
 type_drivers = flat,vlan,vxlan
 tenant_network_types = vxlan
-mechanism_drivers = openvswitch,l2population
+mechanism_drivers = openvswitch
 extension_drivers = port_security
-
-[ml2_type_flat]
-flat_networks = provider
 
 [ml2_type_vxlan]
 vni_ranges = 1:1000
@@ -681,79 +749,72 @@ vni_ranges = 1:1000
 enable_ipset = true
 ```
 
-**/etc/neutron/plugins/ml2/openvswitch_agent.ini 편집:**
+> ✔️ Linuxbridge 관련 설정 제거 완료
+
+#### `/etc/neutron/plugins/ml2/openvswitch_agent.ini` (Controller)
+
 ```ini
 [ovs]
+local_ip = 192.168.56.10      # Controller Host-Only IP
 bridge_mappings = provider:br-ex
-local_ip = 192.168.0.10
 
 [agent]
 tunnel_types = vxlan
+
+[vxlan]
 l2_population = true
 
 [securitygroup]
 enable_security_group = true
-firewall_driver = openvswitch
+firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
 ```
 
-**/etc/neutron/l3_agent.ini 편집:**
-```ini
-[DEFAULT]
-interface_driver = openvswitch
-```
+#### `/etc/neutron/metadata_agent.ini`
 
-**/etc/neutron/dhcp_agent.ini 편집:**
-```ini
-[DEFAULT]
-interface_driver = openvswitch
-dhcp_driver = neutron.agent.linux.dhcp.Dnsmasq
-enable_isolated_metadata = true
-```
-
-**/etc/neutron/metadata_agent.ini 편집:**
 ```ini
 [DEFAULT]
 nova_metadata_host = controller
-metadata_proxy_shared_secret = METADATA_SECRET
+metadata_proxy_shared_secret = 1234
 ```
 
-#### 10.1.5 OVS 브리지 생성
+### 10.1.5 OVS 설정 (Controller)
 
 ```bash
 apt install -y openvswitch-switch
 systemctl enable --now openvswitch-switch
-
-ovs-vsctl add-br br-ex
-ovs-vsctl add-port br-ex ens33
 ```
 
-> **주의**: `ens33`을 실제 네트워크 인터페이스 이름으로 변경하세요.
+> **참고:** External 네트워크를 나중에 사용할 경우를 대비해 `br-ex`는 유지
 
-#### 10.1.6 데이터베이스 동기화
+### 10.1.6 DB 동기화 및 서비스 재시작
 
 ```bash
-neutron-db-manage --config-file /etc/neutron/neutron.conf \
+neutron-db-manage \
+  --config-file /etc/neutron/neutron.conf \
   --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head
 
-systemctl restart nova-api
 systemctl restart neutron-server neutron-openvswitch-agent \
-  neutron-dhcp-agent neutron-metadata-agent neutron-l3-agent
+  neutron-dhcp-agent neutron-metadata-agent neutron-l3-agent nova-api
 ```
 
-### 10.2 Compute Node 설정
+---
 
-#### 10.2.1 Neutron 설치
+## 10.2 Compute Node 설정
+
+### 10.2.1 Neutron 설치
 
 ```bash
-apt install -y neutron-openvswitch-agent
+apt install -y neutron-openvswitch-agent openvswitch-switch
+systemctl enable --now openvswitch-switch
 ```
 
-#### 10.2.2 Neutron 설정
+### 10.2.2 Neutron 설정 (Compute)
 
-**/etc/neutron/neutron.conf 편집:**
+#### `/etc/neutron/neutron.conf`
+
 ```ini
 [DEFAULT]
-transport_url = rabbit://openstack:RABBIT_PASS@controller
+transport_url = rabbit://openstack:1234@controller:5672
 auth_strategy = keystone
 
 [keystone_authtoken]
@@ -763,49 +824,44 @@ memcached_servers = controller:11211
 auth_type = password
 project_domain_name = Default
 user_domain_name = Default
-project_name = service
+project_name = admin
 username = neutron
-password = NEUTRON_PASS
+password = 1234
 ```
 
-**/etc/neutron/plugins/ml2/openvswitch_agent.ini 편집:**
+#### `/etc/neutron/plugins/ml2/openvswitch_agent.ini`
+
 ```ini
 [ovs]
+local_ip = 192.168.56.11      # Compute Host-Only IP
 bridge_mappings = provider:br-ex
-local_ip = 192.168.0.11
 
 [agent]
 tunnel_types = vxlan
+
+[vxlan]
 l2_population = true
 
 [securitygroup]
 enable_security_group = true
-firewall_driver = openvswitch
+firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
 ```
 
-#### 10.2.3 OVS 브리지 생성
+### 10.2.3 서비스 재시작
 
 ```bash
-apt install -y openvswitch-switch
-systemctl enable --now openvswitch-switch
-
-ovs-vsctl add-br br-ex
-ovs-vsctl add-port br-ex ens33
-```
-
-**서비스 재시작:**
-```bash
-systemctl restart nova-compute neutron-openvswitch-agent
-```
-
-### 10.3 검증
-
-**Controller 노드에서:**
-```bash
-openstack network agent list
+systemctl restart neutron-openvswitch-agent nova-compute
 ```
 
 ---
+
+## 10.3 검증
+
+Controller 노드에서:
+
+```bash
+openstack network agent list
+```
 
 ## 11. 블록 스토리지 (Cinder)
 
