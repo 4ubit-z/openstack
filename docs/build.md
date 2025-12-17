@@ -645,19 +645,45 @@ openstack image list
 
 ---
 # 10. 네트워크 서비스 (Neutron – Open vSwitch + VXLAN)
+# OpenStack Neutron 네트워크 서비스 구성 가이드
 
-## 구성 목표
+## 개요
 
-- Controller 1 + Compute 1
-- VM은 사설 IP(VXLAN) 사용
-- VM ↔ VM ping 통신
-- Host-Only 네트워크를 VXLAN 터널망으로 사용
+본 문서는 OpenStack 환경에서 Neutron 네트워크 서비스를 Open vSwitch와 VXLAN을 사용하여 구성하는 방법을 설명합니다.
+
+### 구성 목표
+
+- **노드 구성**: Controller 1대 + Compute 1대
+- **네트워크**: VM은 사설 IP(VXLAN) 사용
+- **통신**: VM ↔ VM ping 통신 가능
+- **터널망**: 관리망(Bridge 또는 NAT)을 VXLAN 터널망으로 사용
+- **제외 사항**: Host-Only 네트워크 사용 안 함
 
 ---
 
-## 10.1 Controller Node 설정
+## 사전 요구사항
 
-### 10.1.1 DB 생성
+### 네트워크 구성
+
+각 노드의 NIC는 다음과 같이 구성되어야 합니다:
+
+- **NIC 1**: NAT 또는 Bridge (관리망)
+- **NIC 2**: Bridge (External / Provider)
+
+### 관리망 IP 할당 예시
+
+| 노드 | IP 주소 | 용도 |
+|------|---------|------|
+| Controller | 192.168.12.10 | VXLAN local_ip |
+| Compute | 192.168.12.11 | VXLAN local_ip |
+
+> ⚠️ **중요**: 이 관리망 IP가 VXLAN local_ip로 사용됩니다.
+
+---
+
+## 1. Controller Node 설정
+
+### 1.1 데이터베이스 생성
 
 ```bash
 mysql -u root <<EOF
@@ -667,35 +693,36 @@ FLUSH PRIVILEGES;
 EOF
 ```
 
-### 10.1.2 Neutron 사용자 및 서비스 생성
+### 1.2 Neutron 사용자 및 서비스 생성
 
 ```bash
 source ~/admin-openrc
 
+# Neutron 사용자 생성
 openstack user create --domain default --password 1234 neutron
 openstack role add --project admin --user neutron admin
 
+# Neutron 서비스 생성
 openstack service create \
   --name neutron \
   --description "OpenStack Networking" network
 
+# 엔드포인트 생성
 openstack endpoint create --region RegionOne network public http://controller:9696
 openstack endpoint create --region RegionOne network internal http://controller:9696
 openstack endpoint create --region RegionOne network admin http://controller:9696
 ```
 
-### 10.1.3 Neutron 설치
-
-**Controller 노드:**
+### 1.3 Neutron 패키지 설치
 
 ```bash
 apt install -y neutron-server neutron-openvswitch-agent \
   neutron-l3-agent neutron-dhcp-agent neutron-metadata-agent
 ```
 
-> ❌ `neutron-linuxbridge-agent` 사용 안 함
+> ❌ **주의**: `neutron-linuxbridge-agent`는 사용하지 않습니다.
 
-### 10.1.4 Neutron 설정 (Controller)
+### 1.4 Neutron 구성 파일 설정
 
 #### `/etc/neutron/neutron.conf`
 
@@ -733,7 +760,7 @@ username = nova
 password = 1234
 ```
 
-#### `/etc/neutron/plugins/ml2/ml2_conf.ini` (Controller / Compute 공통)
+#### `/etc/neutron/plugins/ml2/ml2_conf.ini`
 
 ```ini
 [ml2]
@@ -749,13 +776,13 @@ vni_ranges = 1:1000
 enable_ipset = true
 ```
 
-> ✔️ Linuxbridge 관련 설정 제거 완료
+> ✔️ **참고**: Linuxbridge 관련 설정은 모두 제거합니다.
 
-#### `/etc/neutron/plugins/ml2/openvswitch_agent.ini` (Controller)
+#### `/etc/neutron/plugins/ml2/openvswitch_agent.ini`
 
 ```ini
 [ovs]
-local_ip = 192.168.56.10      # Controller Host-Only IP
+local_ip = 192.168.12.10     # Controller 관리망 IP
 bridge_mappings = provider:br-ex
 
 [agent]
@@ -777,38 +804,40 @@ nova_metadata_host = controller
 metadata_proxy_shared_secret = 1234
 ```
 
-### 10.1.5 OVS 설정 (Controller)
+### 1.5 Open vSwitch 설치 및 활성화
 
 ```bash
 apt install -y openvswitch-switch
 systemctl enable --now openvswitch-switch
 ```
 
-> **참고:** External 네트워크를 나중에 사용할 경우를 대비해 `br-ex`는 유지
+> 📝 **참고**: External 네트워크용 `br-ex`는 이후 Floating IP 실습 시 구성합니다.
 
-### 10.1.6 DB 동기화 및 서비스 재시작
+### 1.6 데이터베이스 동기화 및 서비스 재시작
 
 ```bash
+# DB 동기화
 neutron-db-manage \
   --config-file /etc/neutron/neutron.conf \
   --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head
 
+# 서비스 재시작
 systemctl restart neutron-server neutron-openvswitch-agent \
   neutron-dhcp-agent neutron-metadata-agent neutron-l3-agent nova-api
 ```
 
 ---
 
-## 10.2 Compute Node 설정
+## 2. Compute Node 설정
 
-### 10.2.1 Neutron 설치
+### 2.1 Neutron 패키지 설치
 
 ```bash
 apt install -y neutron-openvswitch-agent openvswitch-switch
 systemctl enable --now openvswitch-switch
 ```
 
-### 10.2.2 Neutron 설정 (Compute)
+### 2.2 Neutron 구성 파일 설정
 
 #### `/etc/neutron/neutron.conf`
 
@@ -833,7 +862,7 @@ password = 1234
 
 ```ini
 [ovs]
-local_ip = 192.168.56.11      # Compute Host-Only IP
+local_ip = 192.168.12.11     # Compute 관리망 IP
 bridge_mappings = provider:br-ex
 
 [agent]
@@ -847,7 +876,7 @@ enable_security_group = true
 firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver
 ```
 
-### 10.2.3 서비스 재시작
+### 2.3 서비스 재시작
 
 ```bash
 systemctl restart neutron-openvswitch-agent nova-compute
@@ -855,14 +884,108 @@ systemctl restart neutron-openvswitch-agent nova-compute
 
 ---
 
-## 10.3 검증
+## 3. 설치 검증
 
-Controller 노드에서:
+### 3.1 네트워크 에이전트 상태 확인
 
 ```bash
 openstack network agent list
 ```
 
+**정상 상태 확인 사항:**
+- 모든 agent가 **UP** 상태
+- 상태 표시가 **:-)** 로 표시되어야 함
+
+### 예상 출력 예시
+
+```
++--------------------------------------+--------------------+------------+-------------------+-------+-------+---------------------------+
+| ID                                   | Agent Type         | Host       | Availability Zone | Alive | State | Binary                    |
++--------------------------------------+--------------------+------------+-------------------+-------+-------+---------------------------+
+| xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx | Open vSwitch agent | controller | None              | :-)   | UP    | neutron-openvswitch-agent |
+| xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx | Open vSwitch agent | compute    | None              | :-)   | UP    | neutron-openvswitch-agent |
+| xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx | DHCP agent         | controller | nova              | :-)   | UP    | neutron-dhcp-agent        |
+| xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx | Metadata agent     | controller | None              | :-)   | UP    | neutron-metadata-agent    |
+| xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx | L3 agent           | controller | nova              | :-)   | UP    | neutron-l3-agent          |
++--------------------------------------+--------------------+------------+-------------------+-------+-------+---------------------------+
+```
+
+---
+
+## 주요 구성 요약
+
+### 사용 기술 스택
+
+- **네트워크 플러그인**: ML2 (Modular Layer 2)
+- **메커니즘 드라이버**: Open vSwitch
+- **터널링 프로토콜**: VXLAN
+- **보안 그룹**: iptables 기반 방화벽
+
+### 네트워크 아키텍처
+
+```
+┌─────────────────────┐         ┌─────────────────────┐
+│   Controller Node   │         │   Compute Node      │
+│  (192.168.12.10)    │◄───────►│  (192.168.12.11)    │
+│                     │  VXLAN  │                     │
+│  - Neutron Server   │  Tunnel │  - OVS Agent        │
+│  - OVS Agent        │         │  - Nova Compute     │
+│  - L3 Agent         │         │                     │
+│  - DHCP Agent       │         │                     │
+│  - Metadata Agent   │         │                     │
+└─────────────────────┘         └─────────────────────┘
+```
+
+### 주요 특징
+
+- **VXLAN 터널**: 관리망을 통한 오버레이 네트워크 구성
+- **분산 라우팅**: L3 Agent를 통한 라우팅 기능 제공
+- **보안 그룹**: VM 간 네트워크 격리 및 방화벽 규칙 적용
+- **메타데이터 서비스**: VM 내부에서 cloud-init 등을 통한 초기 구성 지원
+
+---
+
+## 트러블슈팅
+
+### 에이전트가 DOWN 상태인 경우
+
+```bash
+# 로그 확인
+journalctl -u neutron-openvswitch-agent -f
+
+# OVS 상태 확인
+ovs-vsctl show
+
+# 네트워크 연결 확인
+ping <대상_노드_IP>
+```
+
+### VXLAN 터널 확인
+
+```bash
+# Controller에서
+ovs-vsctl show | grep -A 10 br-tun
+
+# 터널 인터페이스 확인
+ip link show | grep vxlan
+```
+
+---
+
+## 다음 단계
+
+1. **네트워크 생성**: Private 네트워크 및 서브넷 생성
+2. **라우터 구성**: Private 네트워크와 External 네트워크 연결
+3. **Floating IP**: VM에 Public IP 할당
+4. **보안 그룹 설정**: VM 접근 제어 규칙 구성
+
+---
+
+## 참고 사항
+
+- 본 가이드는 개발/테스트 환경을 기준으로 작성되었습니다.
+- 프로덕션 환경에서는 보안 강화 및 고가용성 구성을 권장합니다.
+- 비밀번호는 예시로 `1234`를 사용했으나, 실제 환경에서는 강력한 비밀번호를 사용하세요.
 ## 11. 블록 스토리지 (Cinder)
 
 ### 11.1 Controller Node 설정
