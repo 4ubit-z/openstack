@@ -384,7 +384,7 @@ project_domain_name = Default
 user_domain_name = Default
 project_name = admin
 username = placement
-password = PLACEMENT_PASS
+password = 1234
 ```
 
 **데이터베이스 동기화:**
@@ -807,6 +807,7 @@ metadata_proxy_shared_secret = 1234
 ### 1.5 Open vSwitch 설치 및 활성화
 
 ```bash
+ovs-vsctl add-br br-ex
 apt install -y openvswitch-switch
 systemctl enable --now openvswitch-switch
 ```
@@ -879,6 +880,7 @@ firewall_driver = neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewal
 ### 2.3 서비스 재시작
 
 ```bash
+ovs-vsctl add-br br-ex
 systemctl restart neutron-openvswitch-agent nova-compute
 ```
 
